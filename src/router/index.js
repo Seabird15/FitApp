@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import CoachDashboard from '../views/CoachDashboard.vue'
 import AthleteDashboard from '../views/AthleteDashboard.vue'
+import CoachAthleteRoutinesView from '@/views/CoachAthleteRoutinesView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -14,6 +15,12 @@ const routes = [
     path: '/coach',
     name: 'coach-dashboard',
     component: CoachDashboard,
+    meta: { requiresAuth: true, role: 'coach' },
+  },
+    {
+    path: '/coach/athletes/:athleteId/routines',
+    name: 'coach-athlete-routines',
+    component: CoachAthleteRoutinesView,
     meta: { requiresAuth: true, role: 'coach' },
   },
   {
