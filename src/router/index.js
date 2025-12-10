@@ -3,6 +3,7 @@ import LoginView from '../views/LoginView.vue'
 import CoachDashboard from '../views/CoachDashboard.vue'
 import AthleteDashboard from '../views/AthleteDashboard.vue'
 import CoachAthleteRoutinesView from '@/views/CoachAthleteRoutinesView.vue'
+import RegisterView from '@/views/RegisterView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -10,6 +11,11 @@ const routes = [
     path: '/login',
     name: 'login',
     component: LoginView,
+  },
+    {
+    path: '/register',
+    name: 'register',
+    component: RegisterView,
   },
   {
     path: '/coach',
@@ -43,21 +49,34 @@ export const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
-  // Esperar a que termine initAuthListener (si lo usas)
-  if (authStore.loading) {
-    // puedes dejar un loader más adelante, por ahora:
-    return next()
-  }
-
-  // Rutas que requieren login
+  // 1) Si la ruta requiere autenticación y NO hay usuario => al login
   if (to.meta.requiresAuth && !authStore.user) {
     return next('/login')
   }
 
-  // Rutas con rol específico
+  // 2) Si la ruta tiene rol específico y el perfil no coincide => redirigimos
   if (to.meta.role && authStore.profile?.role !== to.meta.role) {
+    // Si está logueada pero con otro rol, la mandamos a su dashboard correcto
+    if (authStore.profile?.role === 'coach') {
+      return next('/coach')
+    }
+    if (authStore.profile?.role === 'athlete') {
+      return next('/athlete')
+    }
+    // Si ni siquiera tiene rol, la mandamos a login
     return next('/login')
   }
 
+  // 3) Si intenta ir a /login estando logueada, la mandamos a su panel
+  if (to.path === '/login' && authStore.user && authStore.profile?.role) {
+    if (authStore.profile.role === 'coach') {
+      return next('/coach')
+    }
+    if (authStore.profile.role === 'athlete') {
+      return next('/athlete')
+    }
+  }
+
+  // 4) En cualquier otro caso, dejamos pasar
   next()
 })
