@@ -9,11 +9,11 @@
     <!-- Header -->
     <header class="relative z-10 px-6 py-6 border-b border-slate-700/50 backdrop-blur-md">
       <div class="max-w-6xl mx-auto flex items-center justify-between">
-        <div>
+        <div class="flex-1">
           <p class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-2">
             Panel de Coach
           </p>
-          <h1 class="gobold text-4xl font-bold text-white">
+          <h1 class="gobold text-3xl md:text-4xl font-bold text-white">
             Gestión de Jugadoras 🏆
           </h1>
           <p class="text-sm text-slate-400 mt-1">
@@ -58,7 +58,7 @@
             <button
               type="button"
               class="p-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all"
-              @click="loadAthletes"
+              @click="refreshData"
               :disabled="loading"
             >
               <svg class="w-5 h-5" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,10 +106,11 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-slate-700/30 bg-slate-900/30">
-                  <th class="text-left py-4 px-6 font-semibold text-slate-300">Nombre</th>
-                  <th class="text-left py-4 px-6 font-semibold text-slate-300">Correo</th>
-                  <th class="text-left py-4 px-6 font-semibold text-slate-300">Equipo</th>
-                  <th class="text-right py-4 px-6 font-semibold text-slate-300">Acciones</th>
+                  <th class="text-left py-4 px-3 md:px-6 font-semibold text-slate-300 text-xs md:text-sm">Nombre</th>
+                  <th class="hidden md:table-cell text-left py-4 px-6 font-semibold text-slate-300">Correo</th>
+                  <th class="hidden lg:table-cell text-left py-4 px-6 font-semibold text-slate-300">Equipo</th>
+                  <th class="text-left py-4 px-3 md:px-6 font-semibold text-slate-300 text-xs md:text-sm">Progreso</th>
+                  <th class="text-right py-4 px-3 md:px-6 font-semibold text-slate-300">Acciones</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-700/20">
@@ -119,41 +120,58 @@
                   class="hover:bg-slate-700/20 transition-colors group"
                 >
                   <!-- Nombre -->
-                  <td class="py-4 px-6">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
-                        <span class="text-purple-400 font-semibold text-sm">
+                  <td class="py-4 px-3 md:px-6">
+                    <div class="flex items-center gap-2 md:gap-3">
+                      <div class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
+                        <span class="text-purple-400 font-semibold text-xs md:text-sm">
                           {{ athlete.name?.charAt(0).toUpperCase() || '?' }}
                         </span>
                       </div>
-                      <span class="font-medium text-white">
-                        {{ athlete.name || 'Sin nombre' }}
-                      </span>
+                      <div>
+                        <span class="font-medium text-white text-xs md:text-sm block">
+                          {{ athlete.name || 'Sin nombre' }}
+                        </span>
+                        <span class="text-[10px] md:hidden text-slate-400">
+                          {{ athlete.email?.split('@')[0] || 'N/A' }}
+                        </span>
+                      </div>
                     </div>
                   </td>
                   
-                  <!-- Correo -->
-                  <td class="py-4 px-6 text-slate-400">
+                  <!-- Correo (hidden en móvil) -->
+                  <td class="hidden md:table-cell py-4 px-6 text-slate-400 text-xs md:text-sm">
                     {{ athlete.email || 'Sin correo' }}
                   </td>
                   
-                  <!-- Equipo -->
-                  <td class="py-4 px-6">
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-700/50">
+                  <!-- Equipo (hidden en tablet) -->
+                  <td class="hidden lg:table-cell py-4 px-6">
+                    <span class="inline-flex items-center px-2 md:px-3 py-1 rounded-full text-xs font-semibold bg-slate-700/50">
                       {{ athlete.teamId || 'Sin equipo' }}
                     </span>
                   </td>
+
+                  <!-- Progreso -->
+                  <td class="py-4 px-3 md:px-6">
+                    <div class="text-right md:text-left">
+                      <p class="text-xs md:text-sm font-semibold text-emerald-400">
+                        {{ athleteStats[athlete.id]?.last7 || 0 }}
+                      </p>
+                      <p class="text-[10px] text-slate-400">
+                        7 días
+                      </p>
+                    </div>
+                  </td>
                   
                   <!-- Acciones -->
-                  <td class="py-4 px-6 text-right">
+                  <td class="py-4 px-3 md:px-6 text-right">
                     <RouterLink
                       :to="`/coach/athletes/${athlete.id}/routines`"
-                      class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all text-xs font-semibold group-hover:border-purple-500/50"
+                      class="inline-flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all text-xs font-semibold group-hover:border-purple-500/50"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      Rutinas
+                      <span class="hidden md:inline">Rutinas</span>
                     </RouterLink>
                   </td>
                 </tr>
@@ -178,28 +196,75 @@ const athletes = ref([])
 const loading = ref(true)
 const errorMessage = ref('')
 
+// stats: { [athleteId]: { total: number, last7: number } }
+const athleteStats = ref({})
+
+// Cargar jugadoras (colección users, role == 'athlete')
 const loadAthletes = async () => {
+  const usersRef = collection(db, 'users')
+  const q = query(usersRef, where('role', '==', 'athlete'))
+
+  const snap = await getDocs(q)
+  athletes.value = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  }))
+}
+
+// Cargar stats desde workoutLogs
+const loadAthleteStats = async () => {
+  const stats = {}
+
+  const logsRef = collection(db, 'workoutLogs')
+  const snap = await getDocs(logsRef)
+
+  const now = new Date()
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(now.getDate() - 7)
+
+  snap.docs.forEach(docSnap => {
+    const data = docSnap.data()
+    const athleteId = data.athleteId
+    if (!athleteId) return
+
+    if (!stats[athleteId]) {
+      stats[athleteId] = { total: 0, last7: 0 }
+    }
+
+    stats[athleteId].total += 1
+
+    if (data.completedAt) {
+      const d =
+        typeof data.completedAt.toDate === 'function'
+          ? data.completedAt.toDate()
+          : new Date(data.completedAt)
+
+      if (d >= sevenDaysAgo) {
+        stats[athleteId].last7 += 1
+      }
+    }
+  })
+
+  athleteStats.value = stats
+}
+
+// Refrescar todo (athletes + stats)
+const refreshData = async () => {
   loading.value = true
   errorMessage.value = ''
 
   try {
-    const usersRef = collection(db, 'users')
-    const q = query(usersRef, where('role', '==', 'athlete'))
-
-    const snap = await getDocs(q)
-    athletes.value = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
+    await loadAthletes()
+    await loadAthleteStats()
   } catch (error) {
-    console.error('Error cargando jugadoras:', error)
-    errorMessage.value = 'No se pudieron cargar las jugadoras.'
+    console.error('Error cargando jugadoras o stats:', error)
+    errorMessage.value = 'No se pudieron cargar las jugadoras o su progreso.'
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => {
-  loadAthletes()
+  refreshData()
 })
 </script>

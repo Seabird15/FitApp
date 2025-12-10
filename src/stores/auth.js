@@ -4,8 +4,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword
 } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -24,6 +25,30 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false
       }
     },
+
+    async registerAthlete(name, email, passowrd) {
+      this.loading = true
+      try {
+        const {  user  } = await createUserWithEmailAndPassword(auth, email, passowrd)
+        //crear perfil en firestore, coleccion users
+        const userRef = doc(db, 'users', user.uid)
+        const profileData = {
+          name,
+          email,
+          role: 'athlete',
+          createdAt: serverTimestamp(),
+        }
+
+        await setDoc(userRef, profileData)
+
+        this.user = user
+        this.profile = profileData
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
 
     async fetchUserProfile(uid) {
       const ref = doc(db, 'users', uid)

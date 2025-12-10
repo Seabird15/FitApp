@@ -13,8 +13,7 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
-  deleteDoc
-  
+  deleteDoc,
 } from 'firebase/firestore'
 
 const route = useRoute()
@@ -31,6 +30,10 @@ const loadingAthlete = ref(true)
 const routines = ref([])
 const loadingRoutines = ref(true)
 
+// Logs de sesiones (progreso)
+const workoutLogs = ref([])
+const loadingLogs = ref(true)
+
 // Formulario nueva rutina
 const title = ref('')
 const description = ref('')
@@ -44,8 +47,7 @@ const deletingRoutineId = ref(null)
 
 const athleteName = computed(() => athlete.value?.name || 'Jugadora')
 
-
-
+// Helper YouTube → embed
 const toEmbedUrl = (url) => {
   if (!url) return ''
   try {
@@ -59,7 +61,9 @@ const toEmbedUrl = (url) => {
   }
 }
 
-// Cargar datos de la jugadora desde users/{uid}
+// --------- CARGA DE DATOS ---------
+
+// Jugadora
 const loadAthlete = async () => {
   loadingAthlete.value = true
   try {
@@ -75,7 +79,7 @@ const loadAthlete = async () => {
   }
 }
 
-// Cargar rutinas de esta jugadora desde routines
+// Rutinas de la jugadora
 const loadRoutines = async () => {
   loadingRoutines.value = true
   try {
@@ -97,18 +101,67 @@ const loadRoutines = async () => {
   }
 }
 
+// Logs de la jugadora (progreso)
+const loadWorkoutLogs = async () => {
+  if (!athleteId) return
+  loadingLogs.value = true
+  try {
+    const logsRef = collection(db, 'workoutLogs')
+    const q = query(
+      logsRef,
+      where('athleteId', '==', athleteId)
+      // sin orderBy para evitar índice; ordenamos abajo
+    )
+    const snap = await getDocs(q)
+    workoutLogs.value = snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+  } catch (error) {
+    console.error('Error cargando progreso:', error)
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+// Logs ordenados por fecha descendente
+const sortedLogs = computed(() => {
+  return [...workoutLogs.value].sort((a, b) => {
+    const aDate =
+      a.completedAt && typeof a.completedAt.toDate === 'function'
+        ? a.completedAt.toDate()
+        : new Date(a.completedAt || 0)
+    const bDate =
+      b.completedAt && typeof b.completedAt.toDate === 'function'
+        ? b.completedAt.toDate()
+        : new Date(b.completedAt || 0)
+    return bDate - aDate
+  })
+})
+
+const formatLogDate = (log) => {
+  if (!log.completedAt) return ''
+  const d =
+    typeof log.completedAt.toDate === 'function'
+      ? log.completedAt.toDate()
+      : new Date(log.completedAt)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}-${month}-${year}`
+}
+
+// --------- ACCIONES RUTINAS ---------
+
 const deleteRoutine = async (routineId) => {
   const confirmDelete = window.confirm('¿Seguro que quieres eliminar esta rutina?')
   if (!confirmDelete) return
 
   try {
     deletingRoutineId.value = routineId
-
     const routineRef = doc(db, 'routines', routineId)
     await deleteDoc(routineRef)
-
-    // Filtra la rutina eliminada del array local
-    routines.value = routines.value.filter(r => r.id !== routineId)
+    routines.value = routines.value.filter((r) => r.id !== routineId)
   } catch (error) {
     console.error('Error eliminando rutina:', error)
     alert('No se pudo eliminar la rutina. Intenta nuevamente.')
@@ -165,13 +218,11 @@ const saveRoutine = async () => {
 
     successMessage.value = 'Rutina creada correctamente.'
 
-    // Limpiar formulario
     title.value = ''
     description.value = ''
     week.value = 1
     videos.value = [{ name: '', youtubeUrl: '', notes: '' }]
 
-    // Recargar rutinas para ver la nueva en la lista
     await loadRoutines()
   } catch (error) {
     console.error('Error guardando rutina:', error)
@@ -188,12 +239,13 @@ onMounted(() => {
   }
   loadAthlete()
   loadRoutines()
+  loadWorkoutLogs()
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col">
-    <!-- Elementos decorativos de fondo -->
+    <!-- fondo -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
       <div class="absolute top-0 right-0 w-96 h-96 bg-amber-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-orange-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10"></div>
@@ -228,285 +280,309 @@ onMounted(() => {
 
     <!-- Contenido principal -->
     <main class="relative z-10 flex-1 p-6">
-      <div class="max-w-6xl mx-auto space-y-6">
-        
-        <!-- Rutinas asignadas -->
-        <section class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-xl overflow-hidden">
-          <!-- Header de sección -->
-          <div class="px-6 py-4 border-b border-slate-700/30 bg-linear-to-r from-slate-800/50 to-transparent flex items-center justify-between">
-            <div>
+      <div class="max-w-6xl mx-auto grid gap-6 lg:grid-cols-3">
+        <!-- Columna izquierda: rutinas + formulario (2/3) -->
+        <div class="space-y-6 lg:col-span-2">
+          <!-- Rutinas asignadas -->
+          <section class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-700/30 bg-linear-to-r from-slate-800/50 to-transparent flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-semibold text-white">
+                  Rutinas asignadas
+                </h2>
+                <p class="text-xs text-slate-400 mt-1">
+                  Total: <span class="text-amber-400 font-semibold">{{ routines.length }}</span>
+                </p>
+              </div>
+            </div>
+
+            <!-- Cargando -->
+            <div v-if="loadingRoutines" class="p-8 text-center">
+              <div class="inline-block">
+                <svg class="w-12 h-12 text-amber-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <p class="text-slate-400 mt-4">Cargando rutinas...</p>
+            </div>
+
+            <!-- Sin rutinas -->
+            <div v-else-if="routines.length === 0" class="p-12 text-center">
+              <svg class="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <h3 class="text-lg font-semibold text-slate-300 mb-2">
+                Sin rutinas asignadas
+              </h3>
+              <p class="text-slate-400 text-sm">
+                Crea la primera rutina para esta jugadora usando el formulario a continuación.
+              </p>
+            </div>
+
+            <!-- Listado de rutinas -->
+            <div v-else class="divide-y divide-slate-700/30 p-6 space-y-6">
+              <article
+                v-for="routine in routines"
+                :key="routine.id"
+                class="bg-slate-900/50 border border-slate-700/30 rounded-lg p-6 hover:border-amber-500/20 transition-all"
+              >
+                <!-- Header de rutina -->
+                <header class="flex items-start justify-between mb-4 pb-4 border-b border-slate-700/20">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                      <h3 class="text-lg font-semibold text-white">
+                        {{ routine.title }}
+                      </h3>
+                      <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300">
+                        Semana {{ routine.week || '-' }}
+                      </span>
+                    </div>
+                    <p class="text-sm text-slate-400">
+                      {{ routine.videos?.length || 0 }} ejercicios · 
+                      <span class="inline-flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full" :class="routine.status === 'active' ? 'bg-green-500' : 'bg-slate-500'"></span>
+                        {{ routine.status === 'active' ? 'Activa' : 'Inactiva' }}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="p-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 transition-all"
+                    :disabled="deletingRoutineId === routine.id"
+                    @click="deleteRoutine(routine.id)"
+                    title="Eliminar rutina"
+                  >
+                    <svg v-if="deletingRoutineId !== routine.id" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </header>
+
+                <!-- Descripción -->
+                <p v-if="routine.description" class="text-slate-300 text-sm mb-4">
+                  {{ routine.description }}
+                </p>
+
+                <!-- Grid de ejercicios -->
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div
+                    v-for="(video, vidIdx) in routine.videos"
+                    :key="video.order ?? vidIdx"
+                    class="bg-slate-800/50 border border-slate-700/30 rounded-lg overflow-hidden hover:border-amber-500/20 transition-all"
+                  >
+                    <div v-if="video.youtubeUrl" class="aspect-video bg-slate-950 relative overflow-hidden">
+                      <iframe
+                        class="w-full h-full"
+                        :src="toEmbedUrl(video.youtubeUrl)"
+                        frameborder="0"
+                        allowfullscreen
+                        title="Video del ejercicio"
+                      ></iframe>
+                    </div>
+                    <div class="p-4">
+                      <h4 class="font-semibold text-white mb-2">
+                        {{ vidIdx + 1 }}. {{ video.name || 'Ejercicio sin nombre' }}
+                      </h4>
+                      <p v-if="video.notes" class="text-xs text-slate-400 leading-relaxed whitespace-pre-line">
+                        {{ video.notes }}
+                      </p>
+                      <p v-else class="text-xs text-slate-500 italic">
+                        Sin notas
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- Formulario: nueva rutina -->
+          <section class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-700/30 bg-linear-to-r from-slate-800/50 to-transparent">
               <h2 class="text-xl font-semibold text-white">
-                Rutinas asignadas
+                Crear nueva rutina
               </h2>
               <p class="text-xs text-slate-400 mt-1">
-                Total: <span class="text-amber-400 font-semibold">{{ routines.length }}</span>
+                Diseña una rutina personalizada con videos de ejercicios
               </p>
             </div>
-            <button
-              type="button"
-              class="p-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-all"
-              @click="loadRoutines"
-              :disabled="loadingRoutines"
-            >
-              <svg class="w-5 h-5" :class="{ 'animate-spin': loadingRoutines }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-          </div>
 
-          <!-- Estado de carga -->
-          <div v-if="loadingRoutines" class="p-8 text-center">
-            <div class="inline-block">
-              <svg class="w-12 h-12 text-amber-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </div>
-            <p class="text-slate-400 mt-4">Cargando rutinas...</p>
-          </div>
-
-          <!-- Sin rutinas -->
-          <div v-else-if="routines.length === 0" class="p-12 text-center">
-            <svg class="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <h3 class="text-lg font-semibold text-slate-300 mb-2">
-              Sin rutinas asignadas
-            </h3>
-            <p class="text-slate-400 text-sm">
-              Crea la primera rutina para esta jugadora usando el formulario a continuación.
-            </p>
-          </div>
-
-          <!-- Listado de rutinas -->
-          <div v-else class="divide-y divide-slate-700/30 p-6 space-y-6">
-            <article
-              v-for="routine in routines"
-              :key="routine.id"
-              class="bg-slate-900/50 border border-slate-700/30 rounded-lg p-6 hover:border-amber-500/20 transition-all"
-            >
-              <!-- Header de rutina -->
-              <header class="flex items-start justify-between mb-4 pb-4 border-b border-slate-700/20">
-                <div class="flex-1">
-                  <div class="flex items-center gap-3 mb-2">
-                    <h3 class="text-lg font-semibold text-white">
-                      {{ routine.title }}
-                    </h3>
-                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300">
-                      Semana {{ routine.week || '-' }}
-                    </span>
-                  </div>
-                  <p class="text-sm text-slate-400">
-                    {{ routine.videos?.length || 0 }} ejercicios · 
-                    <span class="inline-flex items-center gap-1">
-                      <span class="w-2 h-2 rounded-full" :class="routine.status === 'active' ? 'bg-green-500' : 'bg-slate-500'"></span>
-                      {{ routine.status === 'active' ? 'Activa' : 'Inactiva' }}
-                    </span>
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  class="p-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 transition-all"
-                  :disabled="deletingRoutineId === routine.id"
-                  @click="deleteRoutine(routine.id)"
-                  title="Eliminar rutina"
-                >
-                  <svg v-if="deletingRoutineId !== routine.id" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
-              </header>
-
-              <!-- Descripción -->
-              <p v-if="routine.description" class="text-slate-300 text-sm mb-4">
-                {{ routine.description }}
-              </p>
-
-              <!-- Grid de ejercicios -->
-              <div class="grid gap-4 md:grid-cols-2">
-                <div
-                  v-for="(video, vidIdx) in routine.videos"
-                  :key="video.order"
-                  class="bg-slate-800/50 border border-slate-700/30 rounded-lg overflow-hidden hover:border-amber-500/20 transition-all"
-                >
-                  <!-- Thumbnail -->
-                  <div v-if="video.youtubeUrl" class="aspect-video bg-slate-950 relative overflow-hidden">
-                    <iframe
-                      class="w-full h-full"
-                      :src="toEmbedUrl(video.youtubeUrl)"
-                      frameborder="0"
-                      allowfullscreen
-                      title="Video del ejercicio"
-                    ></iframe>
-                  </div>
-
-                  <!-- Info del ejercicio -->
-                  <div class="p-4">
-                    <h4 class="font-semibold text-white mb-2">
-                      {{ vidIdx + 1 }}. {{ video.name || 'Ejercicio sin nombre' }}
-                    </h4>
-                    <p v-if="video.notes" class="text-xs text-slate-400 leading-relaxed whitespace-pre-line">
-                      {{ video.notes }}
-                    </p>
-                    <p v-else class="text-xs text-slate-500 italic">
-                      Sin notas
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- Formulario: nueva rutina -->
-        <section class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-xl overflow-hidden">
-          <!-- Header de formulario -->
-          <div class="px-6 py-4 border-b border-slate-700/30 bg-linear-to-r from-slate-800/50 to-transparent">
-            <h2 class="text-xl font-semibold text-white">
-              Crear nueva rutina
-            </h2>
-            <p class="text-xs text-slate-400 mt-1">
-              Diseña una rutina personalizada con videos de ejercicios
-            </p>
-          </div>
-
-          <div class="p-6 space-y-5">
-            <!-- Título -->
-            <div>
-              <label class="block text-sm font-semibold text-white mb-2">Título</label>
-              <input
-                v-model="title"
-                class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-                placeholder="Ej: Semana 1 - Fuerza tren inferior"
-              />
-            </div>
-
-            <!-- Descripción -->
-            <div>
-              <label class="block text-sm font-semibold text-white mb-2">Descripción</label>
-              <textarea
-                v-model="description"
-                rows="3"
-                class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none"
-                placeholder="Describe los objetivos y enfoque de esta rutina..."
-              />
-            </div>
-
-            <!-- Semana -->
-            <div class="flex items-end gap-4">
-              <div class="flex-1">
-                <label class="block text-sm font-semibold text-white mb-2">Semana</label>
+            <div class="p-6 space-y-5">
+              <div>
+                <label class="block text-sm font-semibold text-white mb-2">Título</label>
                 <input
-                  type="number"
-                  min="1"
-                  v-model.number="week"
-                  class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                  v-model="title"
+                  class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                  placeholder="Ej: Semana 1 - Fuerza tren inferior"
                 />
               </div>
-            </div>
 
-            <!-- Ejercicios -->
-            <div class="space-y-4 pt-2">
-              <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-white">
-                  Ejercicios
-                </h3>
-                <button
-                  type="button"
-                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-all text-xs font-semibold"
-                  @click="addVideo"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Agregar ejercicio
-                </button>
+              <div>
+                <label class="block text-sm font-semibold text-white mb-2">Descripción</label>
+                <textarea
+                  v-model="description"
+                  rows="3"
+                  class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none"
+                  placeholder="Describe los objetivos y enfoque de esta rutina..."
+                />
               </div>
 
-              <div
-                v-for="(video, index) in videos"
-                :key="index"
-                class="bg-slate-900/50 border border-slate-700/30 rounded-lg p-5 space-y-4"
-              >
-                <div class="flex items-center justify-between pb-3 border-b border-slate-700/20">
-                  <span class="text-sm font-semibold text-amber-400">
-                    Ejercicio #{{ index + 1 }}
-                  </span>
+              <div class="flex items-end gap-4">
+                <div class="flex-1">
+                  <label class="block text-sm font-semibold text-white mb-2">Semana</label>
+                  <input
+                    type="number"
+                    min="1"
+                    v-model.number="week"
+                    class="w-full px-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/50 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
+
+              <!-- Ejercicios -->
+              <div class="space-y-4 pt-2">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-semibold text-white">
+                    Ejercicios
+                  </h3>
                   <button
-                    v-if="videos.length > 1"
                     type="button"
-                    class="text-xs text-red-400 hover:text-red-300 transition-colors"
-                    @click="removeVideo(index)"
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-all text-xs font-semibold"
+                    @click="addVideo"
                   >
-                    Eliminar
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Agregar ejercicio
                   </button>
                 </div>
 
-                <!-- Nombre del ejercicio -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre del ejercicio</label>
-                  <input
-                    v-model="video.name"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-                    placeholder="Ej: Sentadillas búlgaras"
-                  />
-                </div>
+                <div
+                  v-for="(video, index) in videos"
+                  :key="index"
+                  class="bg-slate-900/50 border border-slate-700/30 rounded-lg p-5 space-y-4"
+                >
+                  <div class="flex items-center justify-between pb-3 border-b border-slate-700/20">
+                    <span class="text-sm font-semibold text-amber-400">
+                      Ejercicio #{{ index + 1 }}
+                    </span>
+                    <button
+                      v-if="videos.length > 1"
+                      type="button"
+                      class="text-xs text-red-400 hover:text-red-300 transition-colors"
+                      @click="removeVideo(index)"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
 
-                <!-- URL YouTube -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">URL de YouTube</label>
-                  <input
-                    v-model="video.youtubeUrl"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-                    placeholder="https://www.youtube.com/watch?v=..."
-                  />
-                </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre del ejercicio</label>
+                    <input
+                      v-model="video.name"
+                      class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                      placeholder="Ej: Sentadillas búlgaras"
+                    />
+                  </div>
 
-                <!-- Notas -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Notas e instrucciones</label>
-                  <textarea
-                    v-model="video.notes"
-                    rows="2"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none"
-                    placeholder="Series, repeticiones, descansos, focos técnicos..."
-                  />
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">URL de YouTube</label>
+                    <input
+                      v-model="video.youtubeUrl"
+                      class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Notas e instrucciones</label>
+                    <textarea
+                      v-model="video.notes"
+                      rows="2"
+                      class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none"
+                      placeholder="Series, repeticiones, descansos, focos técnicos..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="errorMessage" class="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p class="text-sm text-red-400">{{ errorMessage }}</p>
+              </div>
+              <div v-if="successMessage" class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <p class="text-sm text-emerald-400">{{ successMessage }}</p>
+              </div>
+
+              <button
+                type="button"
+                class="w-full mt-2 py-3 px-4 bg-linear-to-r from-amber-500 to-orange-600 text-white font-semibold rounded-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-95 shadow-lg"
+                :disabled="loadingSave"
+                @click="saveRoutine"
+              >
+                <span v-if="!loadingSave" class="flex items-center justify-center gap-2">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Guardar rutina
+                </span>
+                <span v-else class="flex items-center justify-center gap-2">
+                  <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Guardando...
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <!-- Columna derecha: progreso de la jugadora -->
+        <aside class="space-y-4">
+          <section class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-700/30 bg-linear-to-r from-slate-800/50 to-transparent">
+              <h2 class="text-lg font-semibold text-white">
+                Progreso de la jugadora
+              </h2>
+              <p class="text-xs text-slate-400 mt-1">
+                Sesiones registradas por {{ athleteName }}
+              </p>
+            </div>
+
+            <div class="p-6 text-sm">
+              <div v-if="loadingLogs" class="text-center py-6">
+                <svg class="w-8 h-8 text-amber-500 mx-auto animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <p class="text-slate-400 mt-3">
+                  Cargando sesiones...
+                </p>
+              </div>
+
+              <div v-else-if="sortedLogs.length === 0" class="py-6 text-center text-slate-400 text-xs">
+                Aún no hay sesiones registradas por esta jugadora.
+              </div>
+
+              <div v-else class="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                <div
+                  v-for="log in sortedLogs"
+                  :key="log.id"
+                  class="border border-slate-700/60 rounded-lg px-4 py-3 bg-slate-900/60"
+                >
+                  <p class="text-xs text-slate-400 mb-1">
+                    {{ formatLogDate(log) }} ·
+                    <span class="text-amber-300">{{ log.sessionLabel || 'Sesión' }}</span>
+                  </p>
+                  <p class="text-sm font-semibold text-slate-100">
+                    {{ log.routineTitle || 'Rutina sin título' }}
+                  </p>
                 </div>
               </div>
             </div>
-
-            <!-- Mensajes de estado -->
-            <div v-if="errorMessage" class="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p class="text-sm text-red-400">{{ errorMessage }}</p>
-            </div>
-            <div v-if="successMessage" class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-              <p class="text-sm text-emerald-400">{{ successMessage }}</p>
-            </div>
-
-            <!-- Botón guardar -->
-            <button
-              type="button"
-              class="w-full mt-2 py-3 px-4 bg-linear-to-r from-amber-500 to-orange-600 text-white font-semibold rounded-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-95 shadow-lg"
-              :disabled="loadingSave"
-              @click="saveRoutine"
-            >
-              <span v-if="!loadingSave" class="flex items-center justify-center gap-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Guardar rutina
-              </span>
-              <span v-else class="flex items-center justify-center gap-2">
-                <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Guardando...
-              </span>
-            </button>
-          </div>
-        </section>
+          </section>
+        </aside>
       </div>
     </main>
   </div>

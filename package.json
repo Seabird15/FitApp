@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@formkit/vue": "^1.6.9",
+    "@tabler/icons": "^3.35.0",
+    "@tabler/icons-vue": "^3.35.0",
     "@tailwindcss/vite": "^4.1.17",
     "firebase": "^12.6.0",
     "pinia": "^3.0.4",
