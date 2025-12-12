@@ -26,8 +26,17 @@ app.use(router)
 // FormKit
 app.use(plugin, defaultConfig)
 
-// Inicializar listener de autenticación
+// Inicializar listener de autenticación ANTES de montar la app
 const authStore = useAuthStore()
 authStore.initAuthListener()
 
-app.mount('#app')
+// Esperar a que se complete la verificación inicial de autenticación
+const unsubscribe = authStore.$subscribe(
+  (mutation, state) => {
+    if (state.loading === false) {
+      unsubscribe()
+      app.mount('#app')
+    }
+  },
+  { immediate: true }
+)

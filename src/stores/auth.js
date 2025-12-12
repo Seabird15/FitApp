@@ -4,7 +4,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 
@@ -64,6 +66,39 @@ export const useAuthStore = defineStore('auth', {
       await signOut(auth)
       this.user = null
       this.profile = null
+    },
+
+    async loginWithGoogle() {
+      this.loading = true
+      try {
+        const provider = new GoogleAuthProvider()
+        const { user } = await signInWithPopup(auth, provider)
+        
+        this.user = user
+        
+        // Verificar si el usuario existe en Firestore
+        const userRef = doc(db, 'users', user.uid)
+        const snap = await getDoc(userRef)
+        
+        if (snap.exists()) {
+          // Usuario existente
+          this.profile = snap.data()
+        } else {
+          // Nuevo usuario - crear perfil
+          // Por defecto lo registramos como atleta, el admin puede cambiar el rol
+          const profileData = {
+            name: user.displayName || user.email?.split('@')[0] || 'Jugadora',
+            email: user.email,
+            role: 'athlete',
+            createdAt: serverTimestamp(),
+          }
+          
+          await setDoc(userRef, profileData)
+          this.profile = profileData
+        }
+      } finally {
+        this.loading = false
+      }
     },
 
     initAuthListener() {

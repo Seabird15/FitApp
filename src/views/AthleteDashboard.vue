@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { db } from '../services/firebase'
 import {
@@ -10,8 +11,12 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  doc,
+  getDoc,
+  updateDoc,
 } from 'firebase/firestore'
 
+const router = useRouter()
 const authStore = useAuthStore()
 
 const routines = ref([])
@@ -23,6 +28,12 @@ const successMessage = ref('')
 const workoutLogs = ref([])
 const loadingLogs = ref(true)
 const completingRoutineId = ref(null)
+
+// Datos de perfil de la atleta
+const athleteProfile = ref(null)
+const weeklyGoal = ref(3)
+const editingGoal = ref(false)
+const savingGoal = ref(false)
 
 const athleteName = computed(
   () => authStore.profile?.name || authStore.user?.email || 'Jugadora'
@@ -39,6 +50,40 @@ const toEmbedUrl = (url) => {
     return `https://www.youtube.com/embed/${videoId}`
   } catch {
     return ''
+  }
+}
+
+// ---- Cargar datos del perfil de la atleta ----
+const loadAthleteProfile = async () => {
+  if (!authStore.user) return
+
+  try {
+    const refDoc = doc(db, 'users', authStore.user.uid)
+    const snap = await getDoc(refDoc)
+    if (snap.exists()) {
+      athleteProfile.value = snap.data()
+      weeklyGoal.value = snap.data()?.weeklyGoal || 3
+    }
+  } catch (error) {
+    console.error('Error cargando perfil:', error)
+  }
+}
+
+// ---- Guardar meta semanal ----
+const saveWeeklyGoal = async () => {
+  if (!authStore.user) return
+  savingGoal.value = true
+
+  try {
+    const refDoc = doc(db, 'users', authStore.user.uid)
+    await updateDoc(refDoc, {
+      weeklyGoal: weeklyGoal.value,
+    })
+    editingGoal.value = false
+  } catch (error) {
+    console.error('Error guardando meta:', error)
+  } finally {
+    savingGoal.value = false
   }
 }
 
@@ -81,7 +126,6 @@ const loadWorkoutLogs = async () => {
     const q = query(
       logsRef,
       where('athleteId', '==', authStore.user.uid)
-      // sin orderBy aquí, ordenamos después en getRoutineLogs
     )
 
     const snap = await getDocs(q)
@@ -89,8 +133,6 @@ const loadWorkoutLogs = async () => {
       id: doc.id,
       ...doc.data(),
     }))
-
-    console.log('Logs cargados:', workoutLogs.value) // opcional para verificar
   } catch (error) {
     console.error('Error cargando logs:', error)
   } finally {
@@ -98,20 +140,164 @@ const loadWorkoutLogs = async () => {
   }
 }
 
-// ---- Computado: sesiones completadas en los últimos 7 días ----
-const sessionsThisWeek = computed(() => {
+// ---- Estadísticas detalladas ----
+const stats = computed(() => {
   const now = new Date()
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(now.getDate() - 7)
 
-  return workoutLogs.value.filter((log) => {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(now.getDate() - 30)
+
+  const last7Days = workoutLogs.value.filter((log) => {
     if (!log.completedAt) return false
-    const date =
+    const d =
       typeof log.completedAt.toDate === 'function'
         ? log.completedAt.toDate()
         : new Date(log.completedAt)
-    return date >= sevenDaysAgo
+    return d >= sevenDaysAgo
   }).length
+
+  const last30Days = workoutLogs.value.filter((log) => {
+    if (!log.completedAt) return false
+    const d =
+      typeof log.completedAt.toDate === 'function'
+        ? log.completedAt.toDate()
+        : new Date(log.completedAt)
+    return d >= thirtyDaysAgo
+  }).length
+
+  return {
+    total: workoutLogs.value.length,
+    last7Days,
+    last30Days,
+  }
+})
+
+// ---- Sesiones completadas en los últimos 7 días ----
+const sessionsThisWeek = computed(() => stats.value.last7Days)
+
+// ---- Gráfico de sesiones por semana ----
+const sessionsByWeek = computed(() => {
+  const weeks = {}
+  const now = new Date()
+
+  // Inicializar últimas 8 semanas
+  for (let i = 7; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(now.getDate() - i * 7)
+    const weekStart = new Date(d)
+    weekStart.setDate(d.getDate() - d.getDay())
+    const key = weekStart.toISOString().split('T')[0]
+    weeks[key] = 0
+  }
+
+  workoutLogs.value.forEach((log) => {
+    if (!log.completedAt) return
+    const d =
+      typeof log.completedAt.toDate === 'function'
+        ? log.completedAt.toDate()
+        : new Date(log.completedAt)
+
+    const weekStart = new Date(d)
+    weekStart.setDate(d.getDate() - d.getDay())
+    const key = weekStart.toISOString().split('T')[0]
+
+    if (weeks.hasOwnProperty(key)) {
+      weeks[key] += 1
+    }
+  })
+
+  return Object.entries(weeks).map(([week, count]) => ({
+    week: new Date(week).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' }),
+    count,
+  }))
+})
+
+// ---- Sistema de Badges/Logros ----
+const badges = computed(() => {
+  const earned = []
+
+  // 🔥 En racha - 7 días sin faltar
+  const daysWithSessions = new Set()
+  workoutLogs.value.forEach((log) => {
+    if (log.completedAt) {
+      const d =
+        typeof log.completedAt.toDate === 'function'
+          ? log.completedAt.toDate()
+          : new Date(log.completedAt)
+      daysWithSessions.add(d.toISOString().split('T')[0])
+    }
+  })
+
+  let consecutiveDays = 0
+  for (let i = 0; i < 7; i++) {
+    const d = new Date()
+    d.setDate(new Date().getDate() - i)
+    const dateStr = d.toISOString().split('T')[0]
+    if (daysWithSessions.has(dateStr)) {
+      consecutiveDays++
+    } else {
+      break
+    }
+  }
+
+  if (consecutiveDays >= 7) {
+    earned.push({
+      id: 'streak',
+      emoji: '🔥',
+      name: 'En Racha',
+      description: '7 días sin faltar',
+      unlocked: true,
+    })
+  } else {
+    earned.push({
+      id: 'streak',
+      emoji: '🔥',
+      name: 'En Racha',
+      description: `${consecutiveDays}/7 días`,
+      unlocked: false,
+    })
+  }
+
+  // 💪 Super atleta - 30+ sesiones en 30 días
+  if (stats.value.last30Days >= 30) {
+    earned.push({
+      id: 'super-athlete',
+      emoji: '💪',
+      name: 'Super Atleta',
+      description: '30+ sesiones en 30 días',
+      unlocked: true,
+    })
+  } else {
+    earned.push({
+      id: 'super-athlete',
+      emoji: '💪',
+      name: 'Super Atleta',
+      description: `${stats.value.last30Days}/30 sesiones`,
+      unlocked: false,
+    })
+  }
+
+  // ⭐ 100% Adherencia - Todas las rutinas completadas
+  if (routines.value.length > 0) {
+    const completedRoutineIds = new Set(
+      workoutLogs.value.map((log) => log.routineId)
+    )
+    const allCompleted = routines.value.every((routine) =>
+      completedRoutineIds.has(routine.id)
+    )
+
+    earned.push({
+      id: 'full-adherence',
+      emoji: '⭐',
+      name: 'Adherencia Perfecta',
+      description: 'Todas las rutinas completadas',
+      unlocked: allCompleted,
+    })
+  }
+
+  return earned
 })
 
 // ---- Acción: marcar rutina como completada ----
@@ -145,12 +331,12 @@ const completeRoutine = async (routine) => {
       athleteId: authStore.user.uid,
       routineId: routine.id,
       routineTitle: routine.title || '',
-      sessionLabel,        // ej: "Sesión mañana", "Sesión de hoy (2025-12-10)"
+      sessionLabel,
       completedDate: todayStr,
       completedAt: serverTimestamp(),
     })
 
-    successMessage.value = 'Sesión marcada como completada.'
+    successMessage.value = 'Sesión marcada como completada. ¡Bien hecho!'
     await loadWorkoutLogs()
   } catch (error) {
     console.error('Error marcando rutina como completada:', error)
@@ -197,12 +383,30 @@ const formatLog = (log) => {
   return dateStr ? `${label} · ${dateStr}` : label
 }
 
+// Logout
+const handleLogout = async () => {
+  await authStore.logout()
+  router.push('/login')
+}
+
+// Función para obtener avatar de Gravatar
+const getAvatarUrl = () => {
+  if (athleteProfile.value?.photoUrl) {
+    return athleteProfile.value.photoUrl
+  }
+  // Si no hay foto, usar Gravatar
+  if (!authStore.user?.email) return ''
+  // Gravatar usa hash MD5 pero haremos una aproximación simple
+  return `https://www.gravatar.com/avatar/${authStore.user.email}?s=200&d=identicon`
+}
+
 onMounted(async () => {
   if (!authStore.user) {
     errorMessage.value = 'No hay usuario autenticado.'
     return
   }
 
+  await loadAthleteProfile()
   await loadRoutines()
   await loadWorkoutLogs()
 })
@@ -216,20 +420,47 @@ onMounted(async () => {
       <div class="absolute -bottom-16 -left-8 w-96 h-96 bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl opacity-8"></div>
     </div>
 
-    <!-- Header -->
     <header class="relative z-10 px-6 py-6 border-b border-slate-700/30 backdrop-blur-sm">
       <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div class="flex-1">
-          <p class="text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">Panel de Jugadora</p>
-          <h1 class="gobold text-2xl md:text-3xl font-bold">Hola, {{ athleteName }} 💪</h1>
-          <p class="text-xs md:text-sm text-slate-400 mt-1">Tus rutinas personalizadas y registro de sesiones.</p>
+        <div class="flex items-start gap-4 flex-1">
+          <!-- Foto de perfil -->
+          <RouterLink
+            to="/athlete/edit-profile"
+            class="shrink-0 group"
+            title="Editar perfil"
+          >
+            <div class="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-3 border-sky-500/30 group-hover:border-sky-500 transition-colors bg-slate-900">
+              <img
+                :src="getAvatarUrl()"
+                alt="Foto de perfil"
+                class="w-full h-full object-cover"
+              />
+            </div>
+          </RouterLink>
+
+          <div class="flex-1">
+            <p class="text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">Panel de Jugadora</p>
+            <h1 class="gobold text-2xl md:text-3xl font-bold">Hola, {{ athleteName }} 💪</h1>
+            <p class="text-xs md:text-sm text-slate-400 mt-1">Tus rutinas personalizadas y registro de sesiones.</p>
+          </div>
         </div>
 
-        <div class="w-full md:w-auto">
+        <div class="flex items-center gap-4">
           <div class="bg-slate-800/40 border border-slate-700/40 rounded-lg px-4 py-3">
             <p class="text-xs text-slate-300">Sesiones (últimos 7 días)</p>
             <p class="text-2xl font-bold text-emerald-400">{{ loadingLogs ? '—' : sessionsThisWeek }}</p>
           </div>
+          <button
+            type="button"
+            @click="handleLogout"
+            class="px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 transition-all font-semibold text-sm"
+            title="Cerrar sesión"
+          >
+            <span class="hidden md:inline">Logout</span>
+            <svg class="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </div>
     </header>
@@ -242,6 +473,111 @@ onMounted(async () => {
       </section>
       <section v-if="successMessage" class="p-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-sm">
         {{ successMessage }}
+      </section>
+
+      <!-- Tarjetas de estadísticas -->
+      <section v-if="!loadingLogs" class="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <div class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4">
+          <p class="text-xs text-slate-400 mb-2">Total de sesiones</p>
+          <p class="text-3xl font-bold text-emerald-400">{{ stats.total }}</p>
+        </div>
+        <div class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4">
+          <p class="text-xs text-slate-400 mb-2">Últimos 7 días</p>
+          <p class="text-3xl font-bold text-sky-400">{{ stats.last7Days }}</p>
+        </div>
+        <div class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4">
+          <p class="text-xs text-slate-400 mb-2">Últimos 30 días</p>
+          <p class="text-3xl font-bold text-purple-400">{{ stats.last30Days }}</p>
+        </div>
+        <div class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4">
+          <p class="text-xs text-slate-400 mb-2">Meta semanal</p>
+          <div class="flex items-center justify-between">
+            <p class="text-3xl font-bold text-pink-400">{{ weeklyGoal }}</p>
+            <button
+              v-if="!editingGoal"
+              @click="editingGoal = true"
+              class="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+              title="Editar meta"
+            >
+              ✎
+            </button>
+          </div>
+          <div v-if="editingGoal" class="flex gap-2 mt-2">
+            <input
+              v-model.number="weeklyGoal"
+              type="number"
+              min="1"
+              max="7"
+              class="w-12 p-1 bg-slate-900/50 border border-slate-600/50 rounded text-white text-sm text-center focus:outline-none focus:border-pink-500/50"
+            />
+            <button
+              @click="saveWeeklyGoal"
+              :disabled="savingGoal"
+              class="text-xs px-2 py-1 bg-pink-500/20 border border-pink-500/30 text-pink-400 rounded hover:bg-pink-500/30 transition-all disabled:opacity-50"
+            >
+              ✓
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Gráfico de adherencia -->
+      <section v-if="!loadingLogs" class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Tu progreso (últimas 8 semanas)</h2>
+        <div class="flex items-end justify-between gap-2 h-48">
+          <div
+            v-for="(week, idx) in sessionsByWeek"
+            :key="idx"
+            class="flex-1 flex flex-col items-center gap-2"
+          >
+            <div
+              class="w-full bg-linear-to-t from-sky-500 to-sky-400 rounded-t transition-all hover:opacity-80"
+              :style="{ height: `${week.count * 25}px` }"
+              :title="`${week.count} sesiones`"
+            ></div>
+            <p class="text-xs text-slate-400 text-center whitespace-nowrap">{{ week.week }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Badges/Logros -->
+      <section v-if="!loadingLogs" class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Tus Logros 🏅</h2>
+        <div class="grid gap-3 md:grid-cols-3">
+          <div
+            v-for="badge in badges"
+            :key="badge.id"
+            class="p-4 rounded-lg transition-all"
+            :class="badge.unlocked ? 'bg-linear-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30' : 'bg-slate-900/30 border border-slate-700/30 opacity-50'"
+          >
+            <div class="flex items-center gap-3 mb-2">
+              <span class="text-3xl">{{ badge.emoji }}</span>
+              <div>
+                <p class="font-semibold text-white">{{ badge.name }}</p>
+                <p class="text-xs" :class="badge.unlocked ? 'text-amber-400' : 'text-slate-400'">
+                  {{ badge.description }}
+                </p>
+              </div>
+            </div>
+            <div v-if="!badge.unlocked" class="w-full bg-slate-700/30 rounded-full h-1.5">
+              <div
+                class="bg-linear-to-r from-sky-500 to-blue-500 h-1.5 rounded-full transition-all"
+                :style="{ width: badge.description.includes('/') ? (parseInt(badge.description) / parseInt(badge.description.split('/')[1]) * 100) + '%' : '0%' }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Feedback del Coach -->
+      <section v-if="athleteProfile?.coachNotes" class="bg-linear-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-6">
+        <div class="flex items-start gap-3">
+          <div class="text-2xl">💬</div>
+          <div>
+            <h2 class="text-lg font-semibold text-white mb-2">Feedback del Coach</h2>
+            <p class="text-slate-300 whitespace-pre-line text-sm">{{ athleteProfile.coachNotes }}</p>
+          </div>
+        </div>
       </section>
 
       <!-- Estado carga -->
@@ -325,5 +661,13 @@ onMounted(async () => {
         </div>
       </section>
     </main>
+
+    <!-- Footer -->
+    <footer class="py-6 border-t border-slate-700/30">
+      <div class="max-w-5xl mx-auto flex items-center justify-center gap-3">
+        <span class="text-sm text-slate-400">En colaboración con</span>
+        <img src="@/assets/VK LOGO BLANCO.jpg" alt="Club Vikingas" class="h-6" />
+      </div>
+    </footer>
   </div>
 </template>

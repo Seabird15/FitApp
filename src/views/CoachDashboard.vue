@@ -9,6 +9,7 @@
     <!-- Header -->
     <header class="relative z-10 px-6 py-6 border-b border-slate-700/50 backdrop-blur-md">
       <div class="max-w-6xl mx-auto flex items-center justify-between">
+        <!-- (logo removed) -->
         <div class="flex-1">
           <p class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-2">
             Panel de Coach
@@ -20,11 +21,24 @@
             Administra tus jugadoras y asigna rutinas personalizadas
           </p>
         </div>
-        <div class="hidden md:block text-right">
-          <p class="text-xs text-slate-400 mb-2">Tu cuenta</p>
-          <p class="text-sm font-semibold text-white truncate max-w-xs">
-            {{ authStore.user?.email }}
-          </p>
+        <div class="flex items-center gap-4">
+          <div class="hidden md:block text-right">
+            <p class="text-xs text-slate-400 mb-2">Tu cuenta</p>
+            <p class="text-sm font-semibold text-white truncate max-w-xs">
+              {{ authStore.user?.email }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="handleLogout"
+            class="px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 transition-all font-semibold text-sm"
+            title="Cerrar sesión"
+          >
+            <span class="hidden md:inline">Logout</span>
+            <svg class="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </div>
     </header>
@@ -122,10 +136,18 @@
                   <!-- Nombre -->
                   <td class="py-4 px-3 md:px-6">
                     <div class="flex items-center gap-2 md:gap-3">
-                      <div class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
-                        <span class="text-purple-400 font-semibold text-xs md:text-sm">
-                          {{ athlete.name?.charAt(0).toUpperCase() || '?' }}
-                        </span>
+                      <div class="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-purple-500/20 border border-purple-500/30 shrink-0">
+                        <img
+                          v-if="athlete.photoUrl"
+                          :src="athlete.photoUrl"
+                          :alt="athlete.name"
+                          class="w-full h-full object-cover"
+                        />
+                        <div v-else class="w-full h-full flex items-center justify-center">
+                          <span class="text-purple-400 font-semibold text-xs md:text-sm">
+                            {{ athlete.name?.charAt(0).toUpperCase() || '?' }}
+                          </span>
+                        </div>
                       </div>
                       <div>
                         <span class="font-medium text-white text-xs md:text-sm block">
@@ -164,15 +186,28 @@
                   
                   <!-- Acciones -->
                   <td class="py-4 px-3 md:px-6 text-right">
-                    <RouterLink
-                      :to="`/coach/athletes/${athlete.id}/routines`"
-                      class="inline-flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all text-xs font-semibold group-hover:border-purple-500/50"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span class="hidden md:inline">Rutinas</span>
-                    </RouterLink>
+                    <div class="flex items-center justify-end gap-2">
+                      <RouterLink
+                        :to="`/coach/athletes/${athlete.id}/profile`"
+                        class="inline-flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-2 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-400 hover:bg-sky-500/30 transition-all text-xs font-semibold group-hover:border-sky-500/50"
+                        title="Ver perfil"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="hidden md:inline">Perfil</span>
+                      </RouterLink>
+                      <RouterLink
+                        :to="`/coach/athletes/${athlete.id}/routines`"
+                        class="inline-flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all text-xs font-semibold group-hover:border-purple-500/50"
+                        title="Ver rutinas"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span class="hidden md:inline">Rutinas</span>
+                      </RouterLink>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -181,15 +216,26 @@
         </section>
       </div>
     </main>
+
+    <!-- Footer -->
+     <footer class="mt-6 pt-4 border-t border-slate-700/30">
+                            <div class="flex gobold items-center justify-center gap-3">
+                                <span class="text-sm text-slate-400">En colaboración con</span>
+                                <img src="../assets/VK LOGO COLOR.png" alt="Club Vikingas" class="h-14" />
+                            </div>
+                        </footer>
+
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { db } from '../services/firebase'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 
+const router = useRouter()
 const authStore = useAuthStore()
 
 const athletes = ref([])
@@ -262,6 +308,12 @@ const refreshData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// Logout
+const handleLogout = async () => {
+  await authStore.logout()
+  router.push('/login')
 }
 
 onMounted(() => {

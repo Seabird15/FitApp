@@ -3,6 +3,8 @@ import LoginView from '../views/LoginView.vue'
 import CoachDashboard from '../views/CoachDashboard.vue'
 import AthleteDashboard from '../views/AthleteDashboard.vue'
 import CoachAthleteRoutinesView from '@/views/CoachAthleteRoutinesView.vue'
+import CoachAthleteProfileView from '@/views/CoachAthleteProfileView.vue'
+import AthleteProfileEditView from '@/views/AthleteProfileEditView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -30,9 +32,21 @@ const routes = [
     meta: { requiresAuth: true, role: 'coach' },
   },
   {
+    path: '/coach/athletes/:athleteId/profile',
+    name: 'coach-athlete-profile',
+    component: CoachAthleteProfileView,
+    meta: { requiresAuth: true, role: 'coach' },
+  },
+  {
     path: '/athlete',
     name: 'athlete-dashboard',
     component: AthleteDashboard,
+    meta: { requiresAuth: true, role: 'athlete' },
+  },
+  {
+    path: '/athlete/edit-profile',
+    name: 'athlete-edit-profile',
+    component: AthleteProfileEditView,
     meta: { requiresAuth: true, role: 'athlete' },
   },
   {
@@ -48,6 +62,12 @@ export const router = createRouter({
 // Guard global
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
+
+  // 0) Si aún estamos cargando la verificación de auth, dejar pasar (la app está inicializándose)
+  if (authStore.loading) {
+    next()
+    return
+  }
 
   // 1) Si la ruta requiere autenticación y NO hay usuario => al login
   if (to.meta.requiresAuth && !authStore.user) {

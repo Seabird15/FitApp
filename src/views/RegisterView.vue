@@ -1,12 +1,26 @@
 <template>
-  <section class="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-    <div class="w-full max-w-md bg-slate-800 rounded-xl shadow-lg p-6">
-      <h1 class="text-2xl font-bold mb-2 text-center">
-        Crear cuenta de jugadora
-      </h1>
-      <p class="text-sm text-slate-300 mb-6 text-center">
-        Regístrate con tu código especial entregado por tu coach.
-      </p>
+  <section class="min-h-screen flex items-center justify-center bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+    <!-- Elementos decorativos -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-20 right-20 w-72 h-72 bg-sky-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+      <div class="absolute -bottom-8 left-20 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-md px-6">
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <h1 class="gobold text-2xl font-bold text-white mb-2">Crear cuenta de jugadora</h1>
+        <div class="h-1 w-12 bg-linear-to-r from-sky-500 to-blue-500 mx-auto rounded-full"></div>
+      </div>
+
+      <!-- Card del formulario -->
+      <div class="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-8 border border-slate-700/50 shadow-2xl">
+        <h1 class="text-2xl font-bold mb-2 text-center gobold">
+          Crear cuenta de jugadora
+        </h1>
+        <p class="text-sm text-slate-300 mb-6 text-center">
+          Regístrate con tu código especial entregado por tu coach.
+        </p>
 
       <FormKit
         type="form"
@@ -109,6 +123,14 @@
           Inicia sesión aquí
         </RouterLink>
       </p>
+      <!-- Footer -->
+        <footer class="mt-6 pt-4 border-t border-slate-700/30">
+                            <div class="flex gobold items-center justify-center gap-3">
+                                <span class="text-sm text-slate-400">En colaboración con</span>
+                                <img src="../assets/VK LOGO COLOR.png" alt="Club Vikingas" class="h-14" />
+                            </div>
+                        </footer>
+    </div>
     </div>
   </section>
 </template>
@@ -121,7 +143,7 @@ import { useAuthStore } from '../stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 
-const REGISTRATION_CODE = import.meta.env.REGISTRATION_CODE 
+const REGISTRATION_CODE = import.meta.env.VITE_REGISTRATION_CODE 
 
 const isSubmitting = ref(false)
 const errorMessage = ref('')
@@ -133,8 +155,8 @@ const handleSubmit = async (formData) => {
   isSubmitting.value = true
 
   try {
-    // Validar código
-    if (formData.code.trim() !== REGISTRATION_CODE) {
+    // Validar código (case-insensitive y sin espacios)
+    if (formData.code.trim().toUpperCase() !== REGISTRATION_CODE.toUpperCase()) {
       errorMessage.value = 'El código de acceso no es válido. Consulta con tu coach.'
       isSubmitting.value = false
       return
